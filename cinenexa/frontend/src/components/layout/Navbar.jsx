@@ -1,82 +1,92 @@
-import { useState, useEffect, useRef } from 'react'
-import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Bell, User, LogOut, Bookmark, ChevronDown, X, Menu } from 'lucide-react'
-import { useAuthStore } from '@store/authStore'
-import { useMovieStore } from '@store/movieStore'
-import toast from 'react-hot-toast'
-import clsx from 'clsx'
-
+import { useState, useEffect, useRef } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Search,
+  Bell,
+  User,
+  LogOut,
+  Bookmark,
+  ChevronDown,
+  X,
+  Menu,
+} from "lucide-react";
+import { useAuthStore } from "@store/authStore";
+import { useMovieStore } from "@store/movieStore";
+import toast from "react-hot-toast";
+import clsx from "clsx";
+import { Shield } from "lucide-react";
 export default function Navbar() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const { user, isAuthenticated, logout } = useAuthStore()
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, isAuthenticated, logout } = useAuthStore();
   // Derive avatar letter reactively so it updates immediately after profile save
-  const avatarLetter = user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'
-  const { searchMovies, searchResults, clearSearch } = useMovieStore()
+  const avatarLetter =
+    user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U";
+  const { searchMovies, searchResults, clearSearch } = useMovieStore();
 
-  const [scrolled, setScrolled] = useState(false)
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [profileOpen, setProfileOpen] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const searchRef = useRef(null)
-  const searchTimeoutRef = useRef(null)
-
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20)
-    window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
+  const [scrolled, setScrolled] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const searchRef = useRef(null);
+  const searchTimeoutRef = useRef(null);
 
   useEffect(() => {
-    if (searchOpen) searchRef.current?.focus()
-  }, [searchOpen])
+    const handleScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (searchOpen) searchRef.current?.focus();
+  }, [searchOpen]);
 
   const handleSearch = (e) => {
-    const query = e.target.value
-    setSearchQuery(query)
-    clearTimeout(searchTimeoutRef.current)
+    const query = e.target.value;
+    setSearchQuery(query);
+    clearTimeout(searchTimeoutRef.current);
     searchTimeoutRef.current = setTimeout(() => {
-      if (query.length >= 2) searchMovies(query)
-      else clearSearch()
-    }, 350)
-  }
+      if (query.length >= 2) searchMovies(query);
+      else clearSearch();
+    }, 350);
+  };
 
   const handleSearchSubmit = (e) => {
-    e.preventDefault()
+    e.preventDefault();
     if (searchQuery.trim()) {
-      navigate(`/search?q=${encodeURIComponent(searchQuery)}`)
-      closeSearch()
+      navigate(`/search?q=${encodeURIComponent(searchQuery)}`);
+      closeSearch();
     }
-  }
+  };
 
   const closeSearch = () => {
-    setSearchOpen(false)
-    setSearchQuery('')
-    clearSearch()
-  }
+    setSearchOpen(false);
+    setSearchQuery("");
+    clearSearch();
+  };
 
   const handleLogout = async () => {
-    await logout()
-    toast.success('Signed out successfully')
-    navigate('/')
-  }
+    await logout();
+    toast.success("Signed out successfully");
+    navigate("/");
+  };
 
   const navLinks = [
-    { label: 'Home', to: '/' },
-    { label: 'Browse', to: '/browse' },
-    { label: 'My Watchlist', to: '/watchlist', auth: true },
-    { label: 'Languages', to: '/language' },
-  ]
+    { label: "Home", to: "/" },
+    { label: "Browse", to: "/browse" },
+    { label: "My Watchlist", to: "/watchlist", auth: true },
+    { label: "Languages", to: "/language" },
+  ];
 
   return (
     <nav
       className={clsx(
-        'fixed top-0 left-0 right-0 z-50 transition-all duration-300',
+        "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
         scrolled
-          ? 'bg-surface-950/95 backdrop-blur-md border-b border-white/5 shadow-lg'
-          : 'bg-gradient-to-b from-black/80 to-transparent'
+          ? "bg-surface-950/95 backdrop-blur-md border-b border-white/5 shadow-lg"
+          : "bg-gradient-to-b from-black/80 to-transparent",
       )}
     >
       <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-12">
@@ -96,15 +106,15 @@ export default function Navbar() {
                   key={link.to}
                   to={link.to}
                   className={clsx(
-                    'text-sm font-medium transition-colors duration-200',
+                    "text-sm font-medium transition-colors duration-200",
                     location.pathname === link.to
-                      ? 'text-white'
-                      : 'text-white/60 hover:text-white'
+                      ? "text-white"
+                      : "text-white/60 hover:text-white",
                   )}
                 >
                   {link.label}
                 </Link>
-              )
+              ),
             )}
           </div>
 
@@ -143,23 +153,27 @@ export default function Navbar() {
                         <button
                           key={movie.id}
                           onClick={() => {
-                            navigate(`/movie/${movie.id}`)
-                            closeSearch()
+                            navigate(`/movie/${movie.id}`);
+                            closeSearch();
                           }}
                           className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/5 text-left transition-colors"
                         >
                           <img
-                            src={movie.poster_path
-                              ? `https://image.tmdb.org/t/p/w92${movie.poster_path}`
-                              : '/placeholder-poster.jpg'
+                            src={
+                              movie.poster_path
+                                ? `https://image.tmdb.org/t/p/w92${movie.poster_path}`
+                                : "/placeholder-poster.jpg"
                             }
                             alt={movie.title}
                             className="w-8 h-12 object-cover rounded flex-shrink-0"
                           />
                           <div>
-                            <p className="text-sm text-white line-clamp-1">{movie.title}</p>
+                            <p className="text-sm text-white line-clamp-1">
+                              {movie.title}
+                            </p>
                             <p className="text-xs text-white/40">
-                              {movie.release_date?.slice(0, 4)} · ⭐ {movie.vote_average?.toFixed(1)}
+                              {movie.release_date?.slice(0, 4)} · ⭐{" "}
+                              {movie.vote_average?.toFixed(1)}
                             </p>
                           </div>
                         </button>
@@ -204,7 +218,10 @@ export default function Navbar() {
                     </div>
                     <ChevronDown
                       size={14}
-                      className={clsx('text-white/60 transition-transform', profileOpen && 'rotate-180')}
+                      className={clsx(
+                        "text-white/60 transition-transform",
+                        profileOpen && "rotate-180",
+                      )}
                     />
                   </button>
 
@@ -217,8 +234,12 @@ export default function Navbar() {
                         className="absolute right-0 top-full mt-2 w-52 bg-surface-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50"
                       >
                         <div className="px-4 py-3 border-b border-white/5">
-                          <p className="text-sm font-medium text-white">{user?.name || 'User'}</p>
-                          <p className="text-xs text-white/40 truncate">{user?.email}</p>
+                          <p className="text-sm font-medium text-white">
+                            {user?.name || "User"}
+                          </p>
+                          <p className="text-xs text-white/40 truncate">
+                            {user?.email}
+                          </p>
                         </div>
                         <Link
                           to="/profile"
@@ -234,6 +255,15 @@ export default function Navbar() {
                         >
                           <Bookmark size={15} /> My Watchlist
                         </Link>
+                        {user?.id === "e123fdca-c021-7034-7d0b-97645ff7cfac" && (
+                          <Link
+                            to="/admin"
+                            onClick={() => setProfileOpen(false)}
+                            className="flex items-center gap-3 px-4 py-3 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+                          >
+                            <Shield size={15} /> Admin Dashboard
+                          </Link>
+                        )}
                         <button
                           onClick={handleLogout}
                           className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-white/5 transition-colors border-t border-white/5"
@@ -277,7 +307,7 @@ export default function Navbar() {
           {mobileMenuOpen && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
+              animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               className="md:hidden border-t border-white/10 py-3 overflow-hidden"
             >
@@ -291,12 +321,12 @@ export default function Navbar() {
                   >
                     {link.label}
                   </Link>
-                )
+                ),
               )}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
     </nav>
-  )
+  );
 }
