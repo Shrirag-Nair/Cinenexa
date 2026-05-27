@@ -1,0 +1,9 @@
+{
+  "name": "cinenexa-shared-layer",
+  "version": "1.0.0",
+  "description": "Shared utilities for CineNexa Lambda functions",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.540.0",
+    "@aws-sdk/lib-dynamodb": "^3.540.0"
+  }
+}

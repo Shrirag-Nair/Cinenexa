@@ -1,0 +1,22 @@
+{
+  "name": "cinenexa-infrastructure",
+  "version": "1.0.0",
+  "description": "CineNexa AWS infrastructure setup scripts",
+  "scripts": {
+    "setup:all":      "node dynamodb/setup-dynamodb.js && node cognito/setup-cognito.js && node s3/setup-s3.js && node deploy-lambdas.js && node apigateway/setup-apigateway.js",
+    "setup:db":       "node dynamodb/setup-dynamodb.js",
+    "setup:cognito":  "node cognito/setup-cognito.js",
+    "setup:s3":       "node s3/setup-s3.js",
+    "setup:api":      "node apigateway/setup-apigateway.js",
+    "deploy:lambdas": "node deploy-lambdas.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-api-gateway":             "^3.540.0",
+    "@aws-sdk/client-cloudfront":              "^3.540.0",
+    "@aws-sdk/client-cognito-identity-provider":"^3.540.0",
+    "@aws-sdk/client-dynamodb":                "^3.540.0",
+    "@aws-sdk/client-lambda":                  "^3.540.0",
+    "@aws-sdk/client-s3":                      "^3.540.0",
+    "@aws-sdk/lib-dynamodb":                   "^3.540.0"
+  }
+}

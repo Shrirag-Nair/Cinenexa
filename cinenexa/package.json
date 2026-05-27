@@ -1,0 +1,19 @@
+{
+  "name": "cinenexa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CineNexa — Serverless movie streaming platform on AWS",
+  "scripts": {
+    "dev":              "cd frontend && npm run dev",
+    "build":            "cd frontend && npm run build",
+    "setup:infra":      "cd infrastructure && npm install && npm run setup:all",
+    "setup:db":         "cd infrastructure && node dynamodb/setup-dynamodb.js",
+    "setup:cognito":    "cd infrastructure && node cognito/setup-cognito.js",
+    "setup:s3":         "cd infrastructure && node s3/setup-s3.js",
+    "setup:api":        "cd infrastructure && node apigateway/setup-apigateway.js",
+    "deploy:lambdas":   "cd infrastructure && node deploy-lambdas.js",
+    "deploy:frontend":  "cd frontend && npm run build && aws s3 sync dist/ s3://$S3_BUCKET --delete",
+    "install:all":      "npm i && cd frontend && npm i && cd ../infrastructure && npm i"
+  },
+  "workspaces": ["frontend", "infrastructure"]
+}
