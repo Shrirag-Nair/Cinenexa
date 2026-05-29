@@ -16,15 +16,25 @@ export default function WatchlistPage() {
     if (user?.id) fetchWatchlist(user.id)
   }, [user?.id])
 
-  const handleRemove = async (movieId, title) => {
-    await removeFromWatchlist(user.id, movieId)
-    toast.success(`Removed "${title}" from watchlist`)
+  const handleRemove = async (movie) => {
+    // Try all possible ID fields — DynamoDB may store as movieId or id
+    const id = movie.movieId || movie.id || String(movie.movieId)
+    if (!id) {
+      toast.error('Could not identify movie')
+      return
+    }
+    try {
+      await removeFromWatchlist(user.id, String(id))
+      toast.success(`Removed "${movie.title}" from watchlist`)
+    } catch (e) {
+      toast.error('Failed to remove — try again')
+      console.error('Remove error:', e)
+    }
   }
 
   return (
     <div className="min-h-screen pt-24 pb-12">
       <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-12">
-        {/* Header */}
         <div className="flex items-center gap-3 mb-8">
           <Bookmark size={24} className="text-brand-400" />
           <div>
@@ -38,32 +48,31 @@ export default function WatchlistPage() {
             <Bookmark size={56} className="text-white/10 mx-auto mb-5" />
             <h3 className="text-xl font-semibold text-white mb-2">Your watchlist is empty</h3>
             <p className="text-white/40 mb-6">Start adding movies you want to watch</p>
-            <button
-              onClick={() => navigate('/browse')}
-              className="bg-brand-500 hover:bg-brand-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-            >
+            <button onClick={() => navigate('/browse')}
+              className="bg-brand-500 hover:bg-brand-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors">
               Browse Movies
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {watchlist.map((movie, i) => (
               <motion.div
-                key={movie.movieId}
+                key={movie.movieId || movie.id}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
+                transition={{ delay: i * 0.04 }}
                 className="flex gap-4 bg-surface-900/60 border border-white/5 rounded-xl p-4 hover:border-white/10 transition-all group"
               >
                 {/* Poster */}
                 <div
-                  className="flex-shrink-0 w-16 aspect-[2/3] rounded-lg overflow-hidden cursor-pointer"
-                  onClick={() => navigate(`/movie/${movie.movieId}`)}
+                  className="flex-shrink-0 w-14 sm:w-16 aspect-[2/3] rounded-lg overflow-hidden cursor-pointer"
+                  onClick={() => navigate(`/movie/${movie.movieId || movie.id}`)}
                 >
                   <img
                     src={getPosterUrl(movie.posterPath, 'w185')}
                     alt={movie.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                    onError={e => { e.target.src = '/placeholder.jpg' }}
                   />
                 </div>
 
@@ -71,7 +80,7 @@ export default function WatchlistPage() {
                 <div className="flex-1 min-w-0">
                   <h3
                     className="font-semibold text-white hover:text-brand-400 cursor-pointer transition-colors line-clamp-1"
-                    onClick={() => navigate(`/movie/${movie.movieId}`)}
+                    onClick={() => navigate(`/movie/${movie.movieId || movie.id}`)}
                   >
                     {movie.title}
                   </h3>
@@ -79,9 +88,13 @@ export default function WatchlistPage() {
                     {movie.releaseDate && <span>{movie.releaseDate.slice(0, 4)}</span>}
                     {movie.voteAverage > 0 && (
                       <span className="flex items-center gap-0.5 text-gold-500">
-                        <Star size={10} fill="currentColor" /> {Number(movie.voteAverage).toFixed(1)}
+                        <Star size={10} fill="currentColor" />
+                        {Number(movie.voteAverage).toFixed(1)}
                       </span>
                     )}
+                    <span className="text-white/20 text-xs">
+                      ID: {movie.movieId || movie.id}
+                    </span>
                   </div>
                   {movie.overview && (
                     <p className="text-xs text-white/40 mt-2 line-clamp-2 hidden sm:block">
@@ -93,14 +106,14 @@ export default function WatchlistPage() {
                 {/* Actions */}
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
-                    onClick={() => navigate(`/movie/${movie.movieId}`)}
+                    onClick={() => navigate(`/movie/${movie.movieId || movie.id}`)}
                     className="p-2 bg-white/8 hover:bg-brand-500 text-white/60 hover:text-white rounded-lg transition-all"
                     title="View details"
                   >
                     <Play size={15} />
                   </button>
                   <button
-                    onClick={() => handleRemove(movie.movieId, movie.title)}
+                    onClick={() => handleRemove(movie)}
                     className="p-2 bg-white/8 hover:bg-red-500/20 text-white/40 hover:text-red-400 rounded-lg transition-all"
                     title="Remove from watchlist"
                   >
