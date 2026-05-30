@@ -1,0 +1,242 @@
+name: CineNexa CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+
+# Cancel in-progress runs on new push
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION:   ${{ secrets.AWS_REGION }}
+  NODE_VERSION: '20'
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 1: Build and validate frontend
+  # Runs on every push and PR — catches build errors before deploy
+  # ──────────────────────────────────────────────────────────────────────────
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Create .env file from secrets
+        working-directory: frontend
+        run: |
+          cat > .env << EOF
+          VITE_COGNITO_USER_POOL_ID=${{ secrets.VITE_COGNITO_USER_POOL_ID }}
+          VITE_COGNITO_CLIENT_ID=${{ secrets.VITE_COGNITO_CLIENT_ID }}
+          VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
+          VITE_APP_REGION=${{ secrets.AWS_REGION }}
+          VITE_CLOUDFRONT_URL=${{ secrets.VITE_CLOUDFRONT_URL }}
+          EOF
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 1
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 2: Deploy frontend to S3 + CloudFront
+  # Only runs on push to main (not PRs)
+  # ──────────────────────────────────────────────────────────────────────────
+  deploy-frontend:
+    name: Deploy Frontend → S3 + CloudFront
+    runs-on: ubuntu-latest
+    needs: build-frontend
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Sync assets to S3 (long cache)
+        run: |
+          aws s3 sync dist/ s3://${{ secrets.S3_BUCKET_NAME }} \
+            --delete \
+            --exclude "index.html" \
+            --cache-control "public,max-age=31536000,immutable" \
+            --no-progress
+
+      - name: Upload index.html (no cache)
+        run: |
+          aws s3 cp dist/index.html \
+            s3://${{ secrets.S3_BUCKET_NAME }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --content-type "text/html"
+
+      - name: Invalidate CloudFront cache
+        run: |
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*" \
+            --query 'Invalidation.Id' \
+            --output text)
+          echo "Invalidation ID: $INVALIDATION_ID"
+
+      - name: Print live URL
+        run: |
+          echo "### ✅ Frontend Deployed!" >> $GITHUB_STEP_SUMMARY
+          echo "🌍 **Live at:** https://${{ secrets.VITE_CLOUDFRONT_URL }}" >> $GITHUB_STEP_SUMMARY
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 3: Deploy all Lambda functions
+  # Only runs on push to main (not PRs)
+  # ──────────────────────────────────────────────────────────────────────────
+  deploy-backend:
+    name: Deploy Backend → Lambda
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    strategy:
+      # Deploy all lambdas in parallel for speed
+      matrix:
+        lambda: [movies, watchlist, recommendations, user, auth, ratings, admin]
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Install Lambda dependencies
+        working-directory: backend/lambdas/${{ matrix.lambda }}
+        run: |
+          if [ -f package.json ]; then
+            npm ci --production --silent
+          fi
+
+      - name: Package Lambda
+        working-directory: backend/lambdas/${{ matrix.lambda }}
+        run: |
+          zip -r /tmp/${{ matrix.lambda }}.zip . \
+            --exclude "*.test.*" \
+            --exclude "*.spec.*" \
+            --exclude ".DS_Store" \
+            -q
+          echo "Package size: $(du -sh /tmp/${{ matrix.lambda }}.zip | cut -f1)"
+
+      - name: Deploy to AWS Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name cinenexa-${{ matrix.lambda }} \
+            --zip-file fileb:///tmp/${{ matrix.lambda }}.zip \
+            --no-cli-pager
+
+      - name: Wait for update to complete
+        run: |
+          aws lambda wait function-updated \
+            --function-name cinenexa-${{ matrix.lambda }}
+          echo "✅ cinenexa-${{ matrix.lambda }} deployed successfully"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 4: Post-deploy verification
+  # Runs after both deploy jobs complete
+  # ──────────────────────────────────────────────────────────────────────────
+  verify:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy-frontend, deploy-backend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Check Lambda states
+        run: |
+          LAMBDAS="movies watchlist recommendations user auth ratings admin"
+          ALL_OK=true
+
+          echo "### 🎬 CineNexa Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Function | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+
+          for fn in $LAMBDAS; do
+            STATE=$(aws lambda get-function-configuration \
+              --function-name cinenexa-$fn \
+              --query 'State' \
+              --output text 2>/dev/null || echo "NOT_FOUND")
+
+            if [ "$STATE" = "Active" ]; then
+              echo "| cinenexa-$fn | ✅ Active |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| cinenexa-$fn | ❌ $STATE |" >> $GITHUB_STEP_SUMMARY
+              ALL_OK=false
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Time:** $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Live URL:** https://${{ secrets.VITE_CLOUDFRONT_URL }}" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$ALL_OK" = "false" ]; then
+            echo "❌ Some Lambda functions failed — check AWS console"
+            exit 1
+          fi
+
+      - name: Verify CloudFront is live
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 15 \
+            "https://${{ secrets.VITE_CLOUDFRONT_URL }}" || echo "000")
+
+          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "304" ]; then
+            echo "✅ CloudFront responding: HTTP $HTTP_CODE"
+          else
+            echo "⚠️ CloudFront returned HTTP $HTTP_CODE — may still be propagating"
+          fi
